@@ -1,8 +1,10 @@
 import requests
 import os.path
 import json
+import time
 
-backupName = 'wisdomecare'
+backupName = 'flockf'
+installsAddress = 'https://api.wpengineapi.com/v1/installs/'
 
 nameRecordDictionary = {}
 apiKey = []
@@ -26,21 +28,18 @@ else:
     with open('keys.json', 'w', encoding='utf-8') as key_file:
         json.dump(keyDict, key_file)
 
-# Get a list of all environments in the system
-# Rather than compiling a list every time, reference json file if it exists, if not then write one.
+# Get a dictionary of all environments in the system
+## Rather than compiling a list every time, reference json file if it exists, if not then write one.
 if (os.path.exists('installs.json')):
-    # fill dictionary with json file data
     with open('installs.json') as json_file:
         jsonFile = json.load(json_file)
-        #print("JSON results: " + str(len(object["results"])))
-        print("Loading Installs...")
         for key, value in jsonFile.items():
             nameRecordDictionary[key] = value
 else:
     print("Compiling list of environments...")
-    nextURL = 'https://api.wpengineapi.com/v1/installs'
+    nextURL = installsAddress
     while nextURL is not None:
-        installsResponse = requests.get(nextURL, auth=requests.auth.HTTPBasicAuth(apiKey[0], apiKey [1]), timeout=10)
+        installsResponse = requests.get(nextURL, auth=requests.auth.HTTPBasicAuth(apiKey[0], apiKey[1]), timeout=10)
         object = json.loads(installsResponse.text)
         print("HTTP results: " + str(len(object["results"])))
         nextURL = object["next"]
@@ -53,26 +52,38 @@ else:
         with open('installs.json', 'w', encoding='utf-8') as f:
             json.dump(nameRecordDictionary, f)
 
-# Now that we know the dictionary is populated, we can store values
 installID = nameRecordDictionary[backupName]["id"]
 
 def run_backup(install_ID, name):
-    # 'https://api.wpengineapi.com/v1/installs'
-    backupURL = 'https://api.wpengineapi.com/v1/installs/' + install_ID + '/backups'
-    #print(backupURL)
+    backupURL = installsAddress + install_ID + '/backups'
     data = {"description": "Taking a backup of " + name, "notification_emails": ["jesse@csdesignstudios.com"]}
     backupResponse = requests.post(backupURL, auth=requests.auth.HTTPBasicAuth(apiKey[0], apiKey[1]), timeout=100, json=data)
-    print(backupResponse.text)
     object = json.loads(backupResponse.text)
-    #print(object["id"])
+    print(backupResponse.text)
     return object["id"]
 
-# This just returns the phrase "Requested"
 def backup_status(install_ID, backup_ID):
-    backupStatusURL = 'https://api.wpengineapi.com/v1/installs/' + install_ID + '/backups/' + backup_ID
-    print(backupStatusURL)
+    backupStatusURL = installsAddress + install_ID + '/backups/' + backup_ID
     backupStatusResponse = requests.get(backupStatusURL, auth=requests.auth.HTTPBasicAuth(apiKey[0], apiKey[1]), timeout=10)
-    print(backupStatusResponse.text)
+    object = json.loads(backupStatusResponse.text)
+    return object
 
+# Runs a status check every couple of seconds until it returns as completed
+def check_backup_status():
+    while True:
+        status = backup_status(installID, backupID)['status']
+        checkSeconds = 5
+        secondsElapsed = 0
+        if (status != 'completed'):
+            print('Backup ' + str(status) + '...')
+            time.sleep(checkSeconds)
+            secondsElapsed += checkSeconds
+        elif (secondsElapsed == 60):
+            print('Checks exceeded limit of 12; 60 seconds.')
+            break
+        else:
+            print('Backup ' + str(status))
+            break
+        
 backupID = run_backup(installID, backupName)
-#backup_status(installID, backupID)
+check_backup_status()
